@@ -23,6 +23,6 @@ class Room(models.Model):
     created_at      = models.DateTimeField(auto_now_add=True)
 
 class Sentiment(models.Model):
-    sentiment    = models.TextField()
+    text        = models.TextField()
     label       = models.CharField(max_length=8, default="", unique=False)
     user        = models.CharField(max_length=32)

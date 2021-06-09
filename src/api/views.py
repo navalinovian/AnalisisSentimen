@@ -16,6 +16,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 from pylab import figure
+from .models import Sentiment
 
 
 from googleapiclient.discovery import build
@@ -30,11 +31,11 @@ def Preprocessing(comments):
     tokenizer = RegexpTokenizer(r'\w+')
     lemmatizer = WordNetLemmatizer()
     
-    comments = comments.drop(comments[comments.Label == 'Irrelevant'].index)
-    comments = comments[comments['Label'].notna()]
-    comments = comments[comments['comment'].notna()]
+    comments = comments.drop(comments[comments.label == 'Irrelevant'].index)
+    comments = comments[comments['label'].notna()]
+    comments = comments[comments['text'].notna()]
     
-    for line in comments['comment']:
+    for line in comments['text']:
         sentence = []
         
         lowercase = line.lower()
@@ -62,8 +63,8 @@ def Process(dataFrame):
     confusions = []
     tfidfv = TfidfVectorizer(min_df=1,stop_words='english')
     nb = MultinomialNB()
-    label_types = dataFrame.Label.value_counts(sort=True)
-    dataFrame['labelNumber'] = dataFrame['Label']
+    label_types = dataFrame.label.value_counts(sort=True)
+    dataFrame['labelNumber'] = dataFrame['label']
     for i in range(0,len(label_types)):
         dataFrame['labelNumber'] = dataFrame['labelNumber'].replace('{}'.format(label_types.index[i]),'{}'.format(i))
     
@@ -106,7 +107,7 @@ class RoomView(generics.CreateAPIView):
     queryset = Room.objects.all()
     serializer_class = RoomSerializer
 
-class SentimentView(generics.CreateAPIView):
+class SentimentView(generics.ListAPIView):
     queryset = Sentiment.objects.all()
     serializer_class = SentimentSerializer
 
@@ -116,10 +117,24 @@ def sentiment_data_upload_view(request):
 def sentiment_data_view(request):
     if request.method =="POST":
         file_excel = request.FILES['name_file']
+
         df = pd.read_excel(file_excel , engine='openpyxl')
-        data = df.drop(df.columns[0],axis=1)
-        data_column = data.columns.values
-        data_numpy = data.to_numpy()
+
+        for index, row in df.iterrows():
+            text = row['comment']
+            label = row['Label']
+            user = row['author']
+            Sentiment(
+                text=text,
+                label=label,
+                user=user
+            ).save()
+
+    data = pd.DataFrame(list(Sentiment.objects.all().values()))
+    data_column = data.columns.values
+    data_numpy = data.to_numpy()
+
+
     context =  {
         'data' : data_numpy,
         'data_column' : data_column,
@@ -132,19 +147,19 @@ def sentiment_data_preprocessing(request):
     dictionary = request.session.get('for_processing')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')    
-    preprocessing_result = Preprocessing(data)
+    data = Preprocessing(data)
 
-    data_column = ['Before Preprocessing','After Preprocessing','Label']
-    data_numpy = data[['comment','preprocessed','Label']].head().to_numpy()
+    data_column = ['Before Preprocessing','After Preprocessing','label']
+    data_numpy = data[['text','preprocessed','label']].head().to_numpy()
     context =  {
         'data' : data_numpy,
         'data_column' : data_column,
-        'next_path': 'evaluate',
+        'next_path': 'evaluate/0',
     }
     request.session['for_evaluation'] = data.to_json()
     return render(request, "data_view.html", context)
 
-def sentiment_evaluate(request):
+def sentiment_evaluate(request, surrogate):
     dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')  
@@ -155,7 +170,7 @@ def sentiment_evaluate(request):
     confusions = process_result['confusions']
     accuracyScore = process_result['accuracies']
     
-    data_confusion = confusions[0]
+    data_confusion = confusions[surrogate]
     disp = ConfusionMatrixDisplay(confusion_matrix=data_confusion)
     disp = disp.plot(cmap="Blues")
 

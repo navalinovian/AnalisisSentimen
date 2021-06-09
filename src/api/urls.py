@@ -9,5 +9,6 @@ urlpatterns = [
     path('data-view', sentiment_data_view, name='data-view'),
     path('data-preprocessing', sentiment_data_preprocessing, name='data_preprocessing'),
     path('evaluate', sentiment_evaluate),
+    path('evaluate/<int:surrogate>/', sentiment_evaluate),
     path('youtube-api', youtube_api),
 ]

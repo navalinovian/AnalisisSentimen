@@ -10,4 +10,4 @@ class RoomSerializer(serializers.ModelSerializer):
 class SentimentSerializer(serializers.ModelSerializer):
     class Meta:
         model= Sentiment
-        fields =('id', 'sentiment', 'label', 'user')
+        fields =('id', 'text', 'label', 'user')
