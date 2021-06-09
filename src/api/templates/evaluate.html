@@ -25,27 +25,7 @@
                                         src="img/undraw_posting_photo.svg" alt="">
                                 </div>
                             <div> 
-                            <table class="table">
-                                    <thead>
-                                        <tr>
-                                    {% for column in data_column %}
-                                            <th>{{column}}</th>
-                                    {% endfor %}
-                                        </tr>
-                                    </thead>
-
-                                    <tbody>
-
-                                    {% for row in data %}
-                                        <tr>
-                                        {% for cell in row %}
-                                            <td scope="row">{{cell}}</td>
-                                        {% endfor %}
-                                        </tr>
-                                    {% endfor %}
-                                    </tbody>
-                            </div>
-                            </div>
+                            <img src="data:image/png;base64,{{ data|safe }}">
                         </div>
 
 

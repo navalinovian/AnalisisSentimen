@@ -3,19 +3,103 @@ from rest_framework import generics
 from .serializers import RoomSerializer, SentimentSerializer
 from .models import Room, Sentiment
 import pandas as pd
+import re, sys, json
 import numpy as np
-import openpyxl
-import re
-import json
+import base64
+from io import BytesIO
 from nltk.corpus import stopwords
 from nltk.tokenize import RegexpTokenizer
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize.treebank import TreebankWordDetokenizer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+from pylab import figure
 
+
+from googleapiclient.discovery import build
+
+
+
+def Preprocessing(comments):
+    preprocessing_result = []
+    regex_result = []
+    lemmatizing_result = []
+    stopword = stopwords.words('english')
+    tokenizer = RegexpTokenizer(r'\w+')
+    lemmatizer = WordNetLemmatizer()
+    
+    comments = comments.drop(comments[comments.Label == 'Irrelevant'].index)
+    comments = comments[comments['Label'].notna()]
+    comments = comments[comments['comment'].notna()]
+    
+    for line in comments['comment']:
+        sentence = []
+        
+        lowercase = line.lower()
+        regex = re.sub("[^a-zA-Z0-9 ]+", " ", lowercase)
+        regex_result.append(regex)
+        tokenize = tokenizer.tokenize(regex)
+        
+        for word in tokenize:    
+            lemma = lemmatizer.lemmatize(word)
+            sentence.append(lemma)
+    
+        lemmatizing_result.append(sentence)
+        
+        removestopword = (word for word in sentence if word not in stopword)
+        join = ' '.join(removestopword)
+        preprocessing_result.append(join)
+    
+    comments['regex'] = regex_result
+    comments['lemmatized'] = lemmatizing_result
+    comments['preprocessed'] = preprocessing_result
+    return comments
+
+def Process(dataFrame):
+    accuracies = []
+    confusions = []
+    tfidfv = TfidfVectorizer(min_df=1,stop_words='english')
+    nb = MultinomialNB()
+    label_types = dataFrame.Label.value_counts(sort=True)
+    dataFrame['labelNumber'] = dataFrame['Label']
+    for i in range(0,len(label_types)):
+        dataFrame['labelNumber'] = dataFrame['labelNumber'].replace('{}'.format(label_types.index[i]),'{}'.format(i))
+    
+    comment = dataFrame['preprocessed']
+    label = dataFrame['labelNumber']
+    kf = KFold(n_splits=10)
+    for train_index, test_index in kf.split(comment) :
+        X_train, X_test = comment[train_index], comment[test_index]
+        y_train, y_test = label[train_index], label[test_index]
+        comment_train_vector = tfidfv.fit_transform(X_train)
+        comment_test_vector = tfidfv.transform(X_test)
+        multiNB = nb.fit(comment_train_vector, y_train)
+        prediction = nb.predict(comment_test_vector)
+        expect = y_test
+        accuracy = accuracy_score(expect, prediction)
+        confusion = confusion_matrix(expect,prediction, labels=nb.classes_)
+        accuracies.append(accuracy)
+        confusions.append(confusion)
+    result =  {
+        'confusions' : confusions,
+        'accuracies' : accuracies,
+    }
+
+    return result
+
+def get_graph():
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    image_png = buffer.getvalue()
+    buffer.close()
+
+    graphic = base64.b64encode(image_png)
+    graphic = graphic.decode('utf-8')
+
+    return graphic
 
 # Create your views here.
 class RoomView(generics.CreateAPIView):
@@ -48,93 +132,41 @@ def sentiment_data_preprocessing(request):
     dictionary = request.session.get('for_processing')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')    
-    tokenizer = RegexpTokenizer(r'\w+')
-
-    #menghilangkan label kosong
-    data.dropna(subset = ['Label'], inplace=True) 
-
-    #menghilangkan label irrelevant
-    irrelevant_data = data[ data['Label'] == 'Irrelevant' ].index
-    data.drop(irrelevant_data, inplace = True)
-
-    #lowercase data
-    data['comment'] = data['comment'].apply(lambda row: row.lower())
-
-    #tokenisasi data
-    data['tokenized'] = data.apply(lambda row: tokenizer.tokenize(row['comment']), axis=1)
-
-    #menghilangkan huruf biasa
-    data['tokenized'] = data['tokenized'].apply(lambda row: [re.sub("[^a-zA-Z]+", "", word) for word in row])
-
-    #lemmatisasi perkata
-    lemmatizer = WordNetLemmatizer()
-    data['lemmatized'] = data['tokenized'].apply(lambda row: [lemmatizer.lemmatize(word) for word in row])
-
-    #menghilangkan stopword
-    stopword = stopwords.words('english')
-    data['removeStopword'] = data['lemmatized'].apply(lambda row: [word for word in row if word not in stopword])
-
-    #detokenisasi
-    detoken = TreebankWordDetokenizer()
-    data['detokenized'] = data['removeStopword'].apply(lambda row: detoken.detokenize(row))
+    preprocessing_result = Preprocessing(data)
 
     data_column = ['Before Preprocessing','After Preprocessing','Label']
-    data_numpy = data[['comment','detokenized','Label']].to_numpy()
+    data_numpy = data[['comment','preprocessed','Label']].head().to_numpy()
     context =  {
         'data' : data_numpy,
         'data_column' : data_column,
-        'next_path': 'data-training',
+        'next_path': 'evaluate',
     }
-    request.session['for_training'] = data.to_json()
+    request.session['for_evaluation'] = data.to_json()
     return render(request, "data_view.html", context)
 
-def sentiment_data_training(request):
-    dictionary = request.session.get('for_training')
+def sentiment_evaluate(request):
+    dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')  
 
-    #mengubah label menjadi 1 untuk positif dan 0 untuk negatif
-    data.loc[data['Label']=='Positive','Label']=1
-    data.loc[data['Label']=='Negative','Label']=0
-    x = data['detokenized']
-    y = data['Label']
-
-    #membagi jumlah data test sebanyak 10%
-    x_train, x_test, y_train, y_test = train_test_split(x,y,test_size=0.1)
-    y_train = y_train.astype('int')
-    expect = np.array(y_test)
-    expect = expect.astype('int')   
-
-    #melakukan pembobotan tfidf
-    tfidfv = TfidfVectorizer(min_df=1,stop_words='english')
-    x_trainv = tfidfv.fit_transform(x_train)
-    x_testv = tfidfv.transform(x_test)
-
-    #melakukan training menggunakan multinomial naive bayes
-    nb = MultinomialNB()
-    multiNB = nb.fit(x_trainv, y_train) 
-
-    #melakukan prediksi
-    pred = nb.predict(x_testv)
+    process_result = Process(data)
 
     #menghitung confusion matrix
-    confusion = confusion_matrix(expect,pred, labels=[0,1]).ravel()
-    accuracyScore = accuracy_score(expect,pred)
+    confusions = process_result['confusions']
+    accuracyScore = process_result['accuracies']
     
-    tfidf_output = pd.DataFrame(x_trainv.toarray(), columns = tfidfv.get_feature_names())
-    data_numpy = tfidf_output.head().to_numpy()
-    data_column = tfidf_output.columns.values
+    data_confusion = confusions[0]
+    disp = ConfusionMatrixDisplay(confusion_matrix=data_confusion)
+    disp = disp.plot(cmap="Blues")
+
+    data_column = ['True Neg','False Pos','False Neg','True Pos']
     
     context =  {
-        'data' : data_numpy,
+        'data' : get_graph(),
         'data_column' : data_column,
         'next_path': 'data-testing',
     }
-    result = pd.DataFrame({'predicted':pred, 'expected':expect})
-    confusion = pd.DataFrame({'confusion':confusion})
-    request.session['for_testing'] = result.to_json()
-    request.session['for_evaluate'] = confusion.to_json()
-    return render(request, "data_view.html", context)
+    return render(request, "evaluate.html", context)
 
 def sentiment_data_testing(request):
     dictionary = request.session.get('for_testing')
@@ -154,7 +186,7 @@ def sentiment_data_testing(request):
     }
     return render(request, "data_view.html", context)
 
-def sentiment_evaluate(request):
+def sentiment_data_training(request):
     dictionary = request.session.get('for_evaluate')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')
@@ -170,4 +202,28 @@ def sentiment_evaluate(request):
         'next_path': 'evaluate',
     }
     return render(request, "evaluate.html", context)
+
+def youtube_api(request, **kwargs):
+    comments = []
+    api_key = 'AIzaSyCJPLzGVlcC8kLE6b7hDgdSQMHz-rn-hus'
+    service = build('youtube','v3',developerKey=api_key)
+    channelId='UwsrzCVZAb8'
+    results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText').execute()
+
+    while results:
+        for item in results['items']:
+            comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+            comments.append(comment)
+ 
+        if 'nextPageToken' in results:
+            kwargs['pageToken'] = results['nextPageToken']
+            results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText').execute()
+        else:
+            break
+    
+    print(comments)
+    context =  {
+        'data' : comments
+    }
+    return render(request, "youtube_api.html", context)
 
