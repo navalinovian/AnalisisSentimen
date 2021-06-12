@@ -20,15 +20,26 @@
                                 <h6 class="m-0 font-weight-bold text-primary">Data View</h6>
                             </div>
                             <div class="card-body">
-                                <div class="text-center">
-                                    <img class="img-fluid px-3 px-sm-4 mt-3 mb-4" style="width: 25rem;"
-                                        src="img/undraw_posting_photo.svg" alt="">
+                                <div class="row">
+                                    <div class="col-md-6 ">
+                                    <img src="data:image/png;base64,{{ data|safe }}">
+                                    </div>
+                                    <div class="col-md-2 ">
+                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
+                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
+                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
+                                    </div>
                                 </div>
-                            <div> 
-                            <img src="data:image/png;base64,{{ data|safe }}">
+                                <div class="row">
+                                
+                                    {% for i in fold %}
+                                    <a href="{% url 'evaluate' surrogate=i %}"class="btn btn-primary">{{i|add:1}}</a>
+                                    
+                                    {% endfor %}
+                                </div>
+                            </div> 
                         </div>
 
-                    
                 </div>
 
 

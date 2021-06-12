@@ -13,7 +13,7 @@ from nltk.stem import WordNetLemmatizer
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, classification_report
 import matplotlib.pyplot as plt
 from pylab import figure
 from .models import Sentiment
@@ -58,7 +58,7 @@ def Preprocessing(comments):
     comments['preprocessed'] = preprocessing_result
     return comments
 
-def Process(dataFrame):
+def Process(dataFrame, fold):
     accuracies = []
     confusions = []
     tfidfv = TfidfVectorizer(min_df=1,stop_words='english')
@@ -70,7 +70,7 @@ def Process(dataFrame):
     
     comment = dataFrame['preprocessed']
     label = dataFrame['labelNumber']
-    kf = KFold(n_splits=10)
+    kf = KFold(n_splits=fold)
     for train_index, test_index in kf.split(comment) :
         X_train, X_test = comment[train_index], comment[test_index]
         y_train, y_test = label[train_index], label[test_index]
@@ -154,18 +154,22 @@ def sentiment_data_preprocessing(request):
     context =  {
         'data' : data_numpy,
         'data_column' : data_column,
-        'next_path': 'evaluate/0',
+        'next_path': 'evaluate',
     }
     request.session['for_evaluation'] = data.to_json()
     return render(request, "data_view.html", context)
 
-def sentiment_evaluate(request, surrogate):
+def sentiment_evaluate(request, surrogate=0):
+    if request.method =="POST":
+        fold = request.POST.get('k_amount')
+        request.session['fold'] = fold
+        
     dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
-    data =  pd.DataFrame.from_dict(data_json, orient='columns')  
+    data =  pd.DataFrame.from_dict(data_json, orient='columns')
 
-    process_result = Process(data)
-
+    fold_session = request.session.get('fold')
+    process_result = Process(data, int(fold_session))
     #menghitung confusion matrix
     confusions = process_result['confusions']
     accuracyScore = process_result['accuracies']
@@ -174,11 +178,10 @@ def sentiment_evaluate(request, surrogate):
     disp = ConfusionMatrixDisplay(confusion_matrix=data_confusion)
     disp = disp.plot(cmap="Blues")
 
-    data_column = ['True Neg','False Pos','False Neg','True Pos']
     
     context =  {
         'data' : get_graph(),
-        'data_column' : data_column,
+        'fold' : range(int(fold_session)),
         'next_path': 'data-testing',
     }
     return render(request, "evaluate.html", context)
@@ -223,22 +226,17 @@ def youtube_api(request, **kwargs):
     api_key = 'AIzaSyCJPLzGVlcC8kLE6b7hDgdSQMHz-rn-hus'
     service = build('youtube','v3',developerKey=api_key)
     channelId='UwsrzCVZAb8'
-    results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText').execute()
+    results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText', order='time', maxResults=20).execute()
 
-    while results:
-        for item in results['items']:
-            comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
-            comments.append(comment)
- 
-        if 'nextPageToken' in results:
-            kwargs['pageToken'] = results['nextPageToken']
-            results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText').execute()
-        else:
-            break
-    
+    for item in results['items']:
+        comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+        comments.append(comment)
+     
     print(comments)
     context =  {
         'data' : comments
     }
     return render(request, "youtube_api.html", context)
 
+def select_kfold(request):
+    return render(request, "kfold.html",{})

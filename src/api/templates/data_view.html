@@ -12,8 +12,10 @@
             <!-- Main Content Here -->
             <div class="row">
 
+                {% ifequal next_path "evaluate"  %}
+                    {% include 'kfold.html' %}
+                {% endifequal %}
                 <div class="col-lg-12 mb-4">
-
                 <!-- Illustrations -->
                         <div class="card shadow mb-4">
                             <div class="card-header py-3">
