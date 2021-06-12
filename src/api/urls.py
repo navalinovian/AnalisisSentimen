@@ -5,10 +5,10 @@ from .views import sentiment_data_view, sentiment_data_preprocessing, sentiment_
 urlpatterns = [
     path('home', RoomView.as_view()),
     path('sentiment', SentimentView.as_view()),
-    path('upload', sentiment_data_upload_view),
-    path('data-view', sentiment_data_view, name='data-view'),
+    path('upload', sentiment_data_upload_view, name='upload'),
+    path('data-view', sentiment_data_view, name='data_view'),
     path('data-preprocessing', sentiment_data_preprocessing, name='data_preprocessing'),
     path('evaluate', sentiment_evaluate, name='evaluate'),
     path('evaluate/<int:surrogate>/', sentiment_evaluate, name='evaluate'),
-    path('youtube-api', youtube_api),
+    path('youtube-api', youtube_api, name='youtube'),
 ]

@@ -163,7 +163,7 @@ def sentiment_evaluate(request, surrogate=0):
     if request.method =="POST":
         fold = request.POST.get('k_amount')
         request.session['fold'] = fold
-        
+
     dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')
@@ -182,7 +182,7 @@ def sentiment_evaluate(request, surrogate=0):
     context =  {
         'data' : get_graph(),
         'fold' : range(int(fold_session)),
-        'next_path': 'data-testing',
+        'next_path': 'youtube',
     }
     return render(request, "evaluate.html", context)
 

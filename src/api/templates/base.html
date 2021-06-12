@@ -40,8 +40,8 @@
       <hr class="sidebar-divider my-0">
 
       <!-- Nav Item - Dashboard -->
-      <li class="nav-item active">
-        <a class="nav-link" href="#">
+      <li class="nav-item">
+        <a class="nav-link" href={% url 'upload' %}>
           <i class="fas fa-fw fa-tachometer-alt"></i>
           <span>Upload</span></a>
       </li>
@@ -51,16 +51,16 @@
 
       <!-- Nav Item - Companies -->
       <li class="nav-item">
-        <a class="nav-link" href="#">
+        <a class="nav-link" href={% url 'data_view' %}>
           <i class="fas fa-fw fa-chart-area"></i>
           <span>Preview</span></a>
       </li>
 
       <!-- Nav Item - Contact -->
       <li class="nav-item">
-        <a class="nav-link" href="#">
+        <a class="nav-link" href={% url 'data_preprocessing' %}>
           <i class="fas fa-fw fa-table"></i>
-          <span>Contact</span></a>
+          <span>Preprocessing</span></a>
       </li>
 
       <!-- Divider -->
@@ -68,16 +68,16 @@
 
       <!-- Nav Item - Profile -->
       <li class="nav-item">
-        <a class="nav-link" href="#">
+        <a class="nav-link" href={% url 'evaluate' %}>
           <i class="fas fa-fw fa-user"></i>
-          <span>Profile</span></a>
+          <span>Evaluation</span></a>
       </li>
 
       <!-- Nav Item - Logout -->
       <li class="nav-item">
-        <a class="nav-link" href="#">
+        <a class="nav-link" href={% url 'youtube' %}>
           <i class="fas fa-fw fa-sign-out-alt"></i>
-          <span>Logout</span></a>
+          <span>Youtube API</span></a>
       </li>
 
       <!-- Divider -->
