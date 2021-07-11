@@ -1,14 +1,14 @@
 from django.shortcuts import render, redirect, reverse
 from rest_framework import generics
-from .serializers import RoomSerializer, SentimentSerializer
-from .models import Room, Sentiment
+from .serializers import SentimentSerializer
+from .models import Sentiment
 import pandas as pd
 import re, sys, json
 import numpy as np
 import base64
 import spacy
 from io import BytesIO
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import KFold
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, f1_score, precision_score, recall_score
@@ -142,10 +142,6 @@ def get_graph():
     return graphic
 
 # Create your views here.
-class RoomView(generics.CreateAPIView):
-    queryset = Room.objects.all()
-    serializer_class = RoomSerializer
-
 class SentimentView(generics.ListAPIView):
     queryset = Sentiment.objects.all()
     serializer_class = SentimentSerializer

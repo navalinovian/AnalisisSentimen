@@ -1,9 +1,9 @@
 from django.urls import path
-from .views import RoomView, SentimentView, sentiment_data_upload_view 
+from .views import SentimentView, sentiment_data_upload_view 
 from .views import sentiment_data_view, sentiment_data_preprocessing, sentiment_evaluate, youtube_api
 
 urlpatterns = [
-    path('home', RoomView.as_view()),
+    # path('home', RoomView.as_view()),
     path('sentiment', SentimentView.as_view()),
     path('upload', sentiment_data_upload_view, name='upload'),
     path('data-view', sentiment_data_view, name='data_view'),

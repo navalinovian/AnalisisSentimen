@@ -1,12 +1,5 @@
 from rest_framework import serializers
-from .models import Room, Sentiment
-
-class RoomSerializer(serializers.ModelSerializer):
-    class Meta:
-        model= Room
-        fields =('id', 'code', 'host', 'guest_can_pause',
-         'votes_to_skip', 'created_at')
-
+from .models import Sentiment
 class SentimentSerializer(serializers.ModelSerializer):
     class Meta:
         model= Sentiment
