@@ -25,4 +25,3 @@ class Room(models.Model):
 class Sentiment(models.Model):
     text        = models.TextField()
     label       = models.CharField(max_length=8, default="", unique=False)
-    user        = models.CharField(max_length=32)

@@ -6,88 +6,127 @@ import pandas as pd
 import re, sys, json
 import numpy as np
 import base64
+import spacy
 from io import BytesIO
-from nltk.corpus import stopwords
-from nltk.tokenize import RegexpTokenizer
-from nltk.stem import WordNetLemmatizer
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, classification_report
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, f1_score, precision_score, recall_score
 import matplotlib.pyplot as plt
 from pylab import figure
 from .models import Sentiment
+import srsly
+from django.conf import settings
+import os
 
-
+from django.contrib.sessions.models import Session
 from googleapiclient.discovery import build
 
 
-
 def Preprocessing(comments):
-    preprocessing_result = []
+    stopword_result = []
     regex_result = []
     lemmatizing_result = []
-    stopword = stopwords.words('english')
-    tokenizer = RegexpTokenizer(r'\w+')
-    lemmatizer = WordNetLemmatizer()
+    nlp = spacy.load('en_core_web_sm')
+    patterns = srsly.read_json(os.path.join(settings.BASE_DIR, 'ar_patterns.json'))
+    nlp.remove_pipe("attribute_ruler")
+    ar = nlp.add_pipe("attribute_ruler", before="lemmatizer")
+    ar.add_patterns(patterns)
     
+    comments = comments.loc[:, ~comments.columns.str.contains('^Unnamed')]
     comments = comments.drop(comments[comments.label == 'Irrelevant'].index)
+    comments = comments.drop(comments[comments.label == 'x'].index)
     comments = comments[comments['label'].notna()]
     comments = comments[comments['text'].notna()]
     
     for line in comments['text']:
-        sentence = []
-        
         lowercase = line.lower()
-        regex = re.sub("[^a-zA-Z0-9 ]+", " ", lowercase)
-        regex_result.append(regex)
-        tokenize = tokenizer.tokenize(regex)
-        
-        for word in tokenize:    
-            lemma = lemmatizer.lemmatize(word)
-            sentence.append(lemma)
-    
+        lemmatize = nlp(lowercase)
+        sentence = [token.lemma_ for token in lemmatize]
         lemmatizing_result.append(sentence)
         
-        removestopword = (word for word in sentence if word not in stopword)
+        removestopword = (word for word in sentence if  nlp.vocab[word].is_stop is False)
         join = ' '.join(removestopword)
-        preprocessing_result.append(join)
-    
-    comments['regex'] = regex_result
+        regex = re.sub("[^a-zA-Z0-9 ]+", " ", join)
+        regex_result.append(regex)
+        stopword_result.append(join)
+     
     comments['lemmatized'] = lemmatizing_result
-    comments['preprocessed'] = preprocessing_result
+    comments['stopword'] = stopword_result
+    comments['preprocessed'] = regex_result
     return comments
-
-def Process(dataFrame, fold):
-    accuracies = []
-    confusions = []
-    tfidfv = TfidfVectorizer(min_df=1,stop_words='english')
-    nb = MultinomialNB()
-    label_types = dataFrame.label.value_counts(sort=True)
+def Implement(dataFrame,test):
+    tfidfv = TfidfVectorizer(min_df = 0.01 ,max_df = 0.3, stop_words='english')
+    nb = MultinomialNB(alpha=0.8)
+    label_types = dataFrame.label.value_counts().sort_index()
     dataFrame['labelNumber'] = dataFrame['label']
     for i in range(0,len(label_types)):
         dataFrame['labelNumber'] = dataFrame['labelNumber'].replace('{}'.format(label_types.index[i]),'{}'.format(i))
     
     comment = dataFrame['preprocessed']
     label = dataFrame['labelNumber']
+
+    comment_train_vector = tfidfv.fit_transform(comment)
+    
+    test_vector = tfidfv.transform(test)
+    nb.fit(comment_train_vector, label)
+    predict = nb.predict(test_vector)
+
+    for i in range(0,len(label_types)):
+        predict = np.where(predict=="{}".format(i), label_types.index[i],predict)
+
+    return predict
+
+def Process(dataFrame, fold):
+    train_accuracies = []
+    test_accuracies = []
+    confusions = []
+    reports = []
+    
+    tfidfv = TfidfVectorizer(min_df = 0.01 ,max_df = 0.3, stop_words='english')
+    nb = MultinomialNB(alpha=1.5)
+    
+    label_types = dataFrame.label.value_counts().sort_index()
+    dataFrame['labelNumber'] = dataFrame['label']
+    for i in range(0,len(label_types)):
+        dataFrame['labelNumber'] = dataFrame['labelNumber'].replace('{}'.format(label_types.index[i]),'{}'.format(i))
+    
+    comment = dataFrame['preprocessed']
+    label = dataFrame['labelNumber']
+    
     kf = KFold(n_splits=fold)
+    
     for train_index, test_index in kf.split(comment) :
-        X_train, X_test = comment[train_index], comment[test_index]
-        y_train, y_test = label[train_index], label[test_index]
+        X_train, X_test = comment.iloc[train_index], comment.iloc[test_index]
+        y_train, y_test = label.iloc[train_index], label.iloc[test_index]
         comment_train_vector = tfidfv.fit_transform(X_train)
         comment_test_vector = tfidfv.transform(X_test)
-        multiNB = nb.fit(comment_train_vector, y_train)
+
+        nb.fit(comment_train_vector, y_train)
         prediction = nb.predict(comment_test_vector)
         expect = y_test
-        accuracy = accuracy_score(expect, prediction)
+        train_accuracy = accuracy_score(y_train, nb.predict(comment_train_vector))
+        test_accuracy = accuracy_score(expect, prediction)
         confusion = confusion_matrix(expect,prediction, labels=nb.classes_)
-        accuracies.append(accuracy)
+        precision = precision_score(expect, prediction, average='weighted')
+        recall = recall_score(expect, prediction, average='weighted')
+        f1 = f1_score(expect, prediction, average='weighted')
+        report = {
+            'precision' : precision,
+            'recall': recall,
+            'f1':f1
+        } 
+        test_accuracies.append(test_accuracy)
+        train_accuracies.append(train_accuracy)
         confusions.append(confusion)
+        reports.append(report)
+
     result =  {
         'confusions' : confusions,
-        'accuracies' : accuracies,
+        'train_accuracies' : train_accuracies,
+        'test_accuracies' : test_accuracies,
+        'reports' : reports,
     }
-
     return result
 
 def get_graph():
@@ -117,23 +156,27 @@ def sentiment_data_upload_view(request):
 def sentiment_data_view(request):
     if request.method =="POST":
         file_excel = request.FILES['name_file']
-
+        Sentiment.objects.all().delete()
+        Session.objects.all().delete()
         df = pd.read_excel(file_excel , engine='openpyxl')
-
         for index, row in df.iterrows():
             text = row['comment']
-            label = row['Label']
-            user = row['author']
+            label = row['label_result']
             Sentiment(
                 text=text,
-                label=label,
-                user=user
+                label=label
             ).save()
+        
+    if request.session.get('for_processing')== None:
+        data = pd.DataFrame(list(Sentiment.objects.all().values()))
 
-    data = pd.DataFrame(list(Sentiment.objects.all().values()))
+    else:
+        dictionary = request.session.get('for_processing')
+        data_json = json.loads(dictionary)
+        data =  pd.DataFrame.from_dict(data_json, orient='columns')    
+        
     data_column = data.columns.values
     data_numpy = data.to_numpy()
-
 
     context =  {
         'data' : data_numpy,
@@ -144,15 +187,21 @@ def sentiment_data_view(request):
     return render(request, "data_view.html", context)
 
 def sentiment_data_preprocessing(request):
-    dictionary = request.session.get('for_processing')
-    data_json = json.loads(dictionary)
-    data =  pd.DataFrame.from_dict(data_json, orient='columns')    
-    data = Preprocessing(data)
+    if request.session.get('for_evaluation')== None:
+        dictionary = request.session.get('for_processing')
+        data_json = json.loads(dictionary)
+        data =  pd.DataFrame.from_dict(data_json, orient='columns')    
+        data = Preprocessing(data)
+    else:
+        dictionary = request.session.get('for_evaluation')
+        data_json = json.loads(dictionary)
+        data =  pd.DataFrame.from_dict(data_json, orient='columns')
 
     data_column = ['Before Preprocessing','After Preprocessing','label']
     data_numpy = data[['text','preprocessed','label']].head().to_numpy()
     context =  {
         'data' : data_numpy,
+        'fold' : range(4,11),
         'data_column' : data_column,
         'next_path': 'evaluate',
     }
@@ -167,74 +216,49 @@ def sentiment_evaluate(request, surrogate=0):
     dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')
-
     fold_session = request.session.get('fold')
     process_result = Process(data, int(fold_session))
-    #menghitung confusion matrix
+    # request.session['process_result'] = process_result
+   
     confusions = process_result['confusions']
-    accuracyScore = process_result['accuracies']
-    
+    accuracyScore = process_result['test_accuracies']
+    report = process_result['reports'][surrogate]
     data_confusion = confusions[surrogate]
     disp = ConfusionMatrixDisplay(confusion_matrix=data_confusion)
     disp = disp.plot(cmap="Blues")
 
-    
     context =  {
+        'accuracy':accuracyScore,
         'data' : get_graph(),
         'fold' : range(int(fold_session)),
+        'report': report,
         'next_path': 'youtube',
     }
     return render(request, "evaluate.html", context)
 
-def sentiment_data_testing(request):
-    dictionary = request.session.get('for_testing')
-    data_json = json.loads(dictionary)
-    data =  pd.DataFrame.from_dict(data_json, orient='columns')  
+def youtube_api(request, **kwargs):
 
-    comparison = np.where(data['predicted']==data['expected'], "", True)
-    data['different'] = comparison
-
-    data_numpy = data.to_numpy()
-    data_column = data.columns.values
-
-    context =  {
-        'data' : data_numpy,
-        'data_column' : data_column,
-        'next_path': 'evaluate',
-    }
-    return render(request, "data_view.html", context)
-
-def sentiment_data_training(request):
-    dictionary = request.session.get('for_evaluate')
+    dictionary = request.session.get('for_evaluation')
     data_json = json.loads(dictionary)
     data =  pd.DataFrame.from_dict(data_json, orient='columns')
-    data.columns = [''] * len(data.columns)
-    data_transpose = data.T
-    data_transpose.columns = ['True Neg','False Pos','False Neg','True Pos']
-    data_numpy = data_transpose.to_numpy
-    data_column = data_transpose.columns.values
-    print(data)
-    context =  {
-        'data' : data_numpy,
-        'data_column' : data_column,
-        'next_path': 'evaluate',
-    }
-    return render(request, "evaluate.html", context)
 
-def youtube_api(request, **kwargs):
     comments = []
     api_key = 'AIzaSyCJPLzGVlcC8kLE6b7hDgdSQMHz-rn-hus'
     service = build('youtube','v3',developerKey=api_key)
     channelId='UwsrzCVZAb8'
-    results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText', order='time', maxResults=20).execute()
 
-    for item in results['items']:
-        comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
-        comments.append(comment)
-     
-    print(comments)
+    
+    if len(comments)<20 :
+        results = service.commentThreads().list(part='snippet',videoId=channelId, textFormat='plainText', order="relevance",
+        searchTerms="ai, technology, ethics", maxResults=20).execute()
+        for item in results['items']:
+            comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+            comments.append(comment)
+    
+    sentiment = Implement(data, comments)
+
     context =  {
-        'data' : comments
+        'data' : zip(comments,sentiment), 
     }
     return render(request, "youtube_api.html", context)
 

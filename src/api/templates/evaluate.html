@@ -5,7 +5,7 @@
 
             <!-- Page Heading -->
             <div class="d-sm-flex align-items-center justify-content-between mb-4 mt-4">
-            <h1 class="h3 mb-0 text-gray-800">Pratinjau Data</h1>
+            <h1 class="h3 mb-0 text-gray-800">Proses</h1>
             <a href="{% url next_path %}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm"><i class="fas fa-download fa-sm text-white-50"></i>{{next_path}}</a>
             </div>          
 
@@ -32,9 +32,9 @@
                                     </div>
                                     </div>
                                     <div class="col-md-2 ">
-                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
-                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
-                                        <h6 class="m-0 font-weight-bold text-primary">HAHAH</h6>
+                                        <h6 class="m-0 font-weight-bold text-primary">Precision : {{report.precision}}</h6>
+                                        <h6 class="m-0 font-weight-bold text-primary">Recall : {{report.recall}}</h6>
+                                        <h6 class="m-0 font-weight-bold text-primary">F1 Score : {{report.f1}}</h6>
                                     </div>
                                 </div>
                             </div> 
